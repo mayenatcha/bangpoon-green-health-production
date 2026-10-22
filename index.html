@@ -802,7 +802,17 @@ async function submitMission5Online(){
  try{
   // Apps Script Web Apps often do not return CORS-readable POST responses to static websites.
   // no-cors sends the request, but the browser cannot confirm that the backend saved it.
-  await secureApi({...payload,token:memberSession.token});
+  const result = await secureApi({
+  ...payload,
+  token: memberSession.token
+});
+
+if (!result || result.success !== true) {
+  throw new Error(
+    (result && result.message) ||
+    'ระบบยังไม่ยืนยันการบันทึกภารกิจที่ 5'
+  );
+}
   var d=activeData();
   d.missions[5]={status:"ส่งคำขอแล้ว (รอตรวจชีต)",formData:JSON.parse(JSON.stringify(fd)),timestamp:new Date().toISOString()};
   saveActiveData();
