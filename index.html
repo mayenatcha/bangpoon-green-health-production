@@ -562,7 +562,7 @@ function renderMission6Form(fd,d){
  var days=Array.isArray(fd.days)?fd.days:Array(14).fill(false);var doneCount=days.filter(Boolean).length;
  h+='<p style="font-size:.85em;color:var(--c-green);margin-bottom:6px">สำเร็จแล้ว '+doneCount+' / 14 วัน</p>';
  h+='<div class="checkin-grid">'+days.map(function(day,i){return '<div class="checkin-day '+(day?'checked':'')+'" onclick="toggleCheckin('+i+')"><span>'+(i+1)+'</span><span style="font-size:.7em">'+(day?'✅':'○')+'</span></div>'}).join('')+'</div>';
- h+='<p style="font-size:.8em;color:#666;margin-top:10px">เช็กอินวันละ 1 ครั้ง ตามลำดับ ไม่สามารถยกเลิกวันเก่าได้ • บันทึกในอุปกรณ์นี้ ยังไม่ใช่ข้อมูลรับรองจากระบบกลาง</p>';
+ h+='<p style="font-size:.8em;color:#666;margin-top:10px">เช็กอินวันละ 1 ครั้ง ตามลำดับ • ต้องได้รับข้อความยืนยันจากระบบกลางจึงถือว่าบันทึกสำเร็จ • หากวันเดิมเคยติ๊กไว้แต่ไม่มีแถวในชีต ให้แตะวันนั้นอีกครั้งเพื่อลองส่ง</p>';
  return h;
 }
 
@@ -587,16 +587,35 @@ function updateMission6Other(value){state.formData.otherBehavior=String(value||'
 function selectBehavior(b,btn){var i=BEHAVIORS.indexOf(b);if(i>=0)toggleBehavior(i);}
 
 function mission6LocalDate(){var n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');}
-function toggleCheckin(i){
+var mission6Submitting=false;
+async function toggleCheckin(i){
  var fd=state.formData,today=mission6LocalDate();
  if(!Array.isArray(fd.days))fd.days=Array(14).fill(false);
  if(!Array.isArray(fd.checkDates))fd.checkDates=[];
  var count=fd.days.filter(Boolean).length;
- if(i!==count){showToastErr('เช็กอินได้เฉพาะวันถัดไปตามลำดับ');return;}
- if(fd.checkDates.includes(today)){showToastErr('วันนี้เช็กอินแล้ว กลับมาใหม่วันพรุ่งนี้');return;}
- if(!(fd.behaviors||[]).length&&!String(fd.otherBehavior||'').trim()){showToastErr('กรุณาเลือกกิจกรรมก่อนเช็กอิน');return;}
- fd.days[i]=true;fd.checkDates[i]=today;
- persistMission6();showToast('บันทึกวันที่ '+(i+1)+' สำเร็จ');render();
+ // An earlier local-only check-in may not have reached the central sheet.
+ // Allow retrying the last locally marked day without creating another local day.
+ var retry=(i===count-1 && fd.days[i]===true && !fd.serverConfirmedDays?.includes(i+1));
+ if(i!==count&&!retry){showToastErr('เช็กอินได้เฉพาะวันถัดไปตามลำดับ');return;}
+ if(fd.checkDates.includes(today)&&!retry){showToastErr('วันนี้เช็กอินแล้ว กลับมาใหม่วันพรุ่งนี้');return;}
+ var activities=[].concat(fd.behaviors||[],String(fd.otherBehavior||'').trim()?['อื่น ๆ: '+String(fd.otherBehavior).trim()]:[]);
+ if(!activities.length){showToastErr('กรุณาเลือกกิจกรรมก่อนเช็กอิน');return;}
+ if(state.demoMode){if(!retry){fd.days[i]=true;fd.checkDates[i]=today;}persistMission6();showToast('บันทึกข้อมูลสาธิตแล้ว');render();return;}
+ if(mission6Submitting)return;
+ if(!memberSession||!memberSession.token||!memberSession.member?.memberId){showToastErr('กรุณาเข้าสู่ระบบใหม่');return;}
+ mission6Submitting=true;
+ try{
+  var result=await secureApi({action:'submitMission6',token:memberSession.token,memberId:memberSession.member.memberId,data:{memberId:memberSession.member.memberId,activity:activities.join(' / ')}});
+  var confirmed=Number(result.completedDays||result.dayNumber||i+1);
+  if(!Number.isInteger(confirmed)||confirmed<1||confirmed>14)throw new Error('ระบบส่งจำนวนวันกลับมาไม่ถูกต้อง');
+  // Server-confirmed progress takes precedence over this device's cached count.
+  fd.days=Array.from({length:14},function(_,j){return j<confirmed});
+  fd.serverConfirmedDays=Array.from({length:confirmed},function(_,j){return j+1});
+  fd.checkDates[i]=today;
+  persistMission6();
+  showToast('บันทึกลงระบบกลางสำเร็จ '+confirmed+' / 14 วัน');render();
+ }catch(err){showToastErr('ยังไม่ยืนยันการบันทึก: '+(err.message||'กรุณาลองใหม่'));}
+ finally{mission6Submitting=false;}
 }
 
 function saveRecruit(i){
@@ -755,7 +774,7 @@ async function submitMission146Online(){
  try{
   const payloadData=JSON.parse(JSON.stringify(fd));
   if(mission===1){payloadData.recruits=(activeData().mission1Recruits||[]).filter(r=>r&&r.saved);}
-  if(mission===6){payloadData.behaviors=fd.behaviors||[];payloadData.days=fd.days||[];payloadData.checkDates=fd.checkDates||[];}
+  if(mission===6){throw new Error('ภารกิจที่ 6 บันทึกผ่านการเช็กอินรายวันแล้ว ไม่ต้องส่งซ้ำด้วยปุ่มส่งภารกิจ');}
   // รูปภาพคงรูปแบบ data URL ตามฟอร์มเดิม; ฝั่ง Apps Script ต้องรองรับข้อมูลรูปแบบนี้
   const response=await secureApi({action:'submitMission'+mission,token:memberSession.token,memberId:memberSession.member.memberId,data:payloadData});
   if(response.success!==true)throw new Error(response.message||'ระบบไม่ยืนยันการบันทึก');
