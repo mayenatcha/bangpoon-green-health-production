@@ -1135,7 +1135,7 @@ m3.actionDesc=el("m3actDesc")?el("m3actDesc").value.trim():"";
 m3.result=el("m3result")?el("m3result").value.trim():"";
 m3.coordinator=el("m3coord")?el("m3coord").value.trim():""}
 
-function saveM3(){
+async function saveM3(){
 collectM3();var m3=state.formData.m3;
 var errors=[];var firstErr=null;
 function chk(id,msg){var el=document.getElementById(id);if(el){el.classList.remove("show")}}
@@ -1153,11 +1153,35 @@ document.getElementById("m3Errors").innerHTML='<div class="inline-msg error">'+e
 document.getElementById("m3Success").innerHTML="";
 if(firstErr)firstErr.scrollIntoView({behavior:"smooth",block:"center"});return}
 document.getElementById("m3Errors").innerHTML="";
-var d=activeData();
-state.formData.date=m3.surveyDate;state.formData.moo=m3.moo;state.formData.community=m3.community;
-d.missions[3]={status:"ส่งแล้ว",formData:JSON.parse(JSON.stringify(state.formData)),timestamp:new Date().toISOString()};
-saveActiveData();
-document.getElementById("m3Success").innerHTML='<div class="inline-msg success">✅ บันทึกภารกิจที่ 3 เรียบร้อยแล้ว</div>'}
+if(state.demoMode){
+ var demo=activeData();
+ demo.missions[3]={status:"บันทึกร่าง",formData:JSON.parse(JSON.stringify(state.formData)),timestamp:new Date().toISOString()};
+ saveActiveData();
+ document.getElementById("m3Success").innerHTML='<div class="inline-msg success">บันทึกข้อมูลสาธิตในเครื่องแล้ว (ยังไม่ได้ส่งเข้าระบบกลาง)</div>';
+ return;
+}
+if(!memberSession||!memberSession.token||!memberSession.member||!memberSession.member.memberId){
+ document.getElementById("m3Errors").innerHTML='<div class="inline-msg error">กรุณาเข้าสู่ระบบสมาชิกใหม่</div>';return;
+}
+var btn=document.querySelector('button[onclick="saveM3()"]');
+if(btn){btn.disabled=true;btn.textContent='⏳ กำลังส่งข้อมูล...';}
+try{
+ var memberId=String(memberSession.member.memberId).trim();
+ var payload={action:'submitMission3',token:memberSession.token,memberId:memberId,
+   data:{member:{memberId:memberId},m3:JSON.parse(JSON.stringify(m3))}};
+ var response=await secureApi(payload);
+ if(response.success!==true)throw new Error(response.message||'ระบบไม่ยืนยันการบันทึก');
+ state.formData.date=m3.surveyDate;state.formData.moo=m3.moo;state.formData.community=m3.community;
+ var d=activeData();
+ d.missions[3]={status:'รอตรวจรับรอง',formData:JSON.parse(JSON.stringify(state.formData)),timestamp:new Date().toISOString()};
+ saveActiveData();
+ document.getElementById("m3Success").innerHTML='<div class="inline-msg success">✅ ระบบตอบรับภารกิจที่ 3 แล้ว — รอตรวจรับรอง</div>';
+ showToast('ส่งภารกิจที่ 3 เข้าระบบแล้ว');
+}catch(e){
+ document.getElementById("m3Errors").innerHTML='<div class="inline-msg error">❌ ส่งข้อมูลไม่สำเร็จ: '+esc(e.message||String(e))+'</div>';
+ document.getElementById("m3Success").innerHTML='';
+}finally{if(btn){btn.disabled=false;btn.textContent='💾 บันทึกภารกิจที่ 3';}}
+}
 
 // ===== DEMO MODE =====
 function demoBanner(){return'<div class="demo-banner">🟠 ข้อมูลสาธิต — ข้อมูลนี้ไม่ใช่ข้อมูลจริง</div>'}
