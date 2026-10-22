@@ -734,6 +734,7 @@ function submitMission(){
 var errors=validateForm();
 if(errors.length>0){var el=document.getElementById("formErrors");if(el)el.innerHTML='<div class="inline-msg error">'+errors.map(function(e){return'<p>⚠️ '+esc(e)+'</p>'}).join("")+'</div>';return}
 if(state.formMissionId===6&&activeData().missions[6]&&activeData().missions[6].status==='ส่งแล้ว'){showToastErr('ภารกิจนี้ส่งแล้ว ไม่สามารถส่งซ้ำได้');return;}
+if([1,4,6].includes(state.formMissionId)&&!state.demoMode){submitMission146Online();return}
 if(state.formMissionId===2&&!state.demoMode){submitMission2Online();return}
 if(state.formMissionId===5&&!state.demoMode){submitMission5Online();return}
 if(state.formMissionId===7&&!state.demoMode){submitMission7Online();return}
@@ -743,7 +744,28 @@ if(state.formMissionId===10&&!state.demoMode){submitMission10Online();return}
 var d=activeData();d.missions[state.formMissionId]={status:"ส่งแล้ว",formData:JSON.parse(JSON.stringify(state.formData)),timestamp:new Date().toISOString()};
 saveActiveData();showToast("บันทึกข้อมูลในเครื่องแล้ว (ยังไม่ยืนยันการส่งเข้าชีต)");navigate("missions")}
 
-// ภารกิจที่ 2 — ส่งจริงผ่าน Netlify API โดยใช้ token ของสมาชิก
+
+// ภารกิจ 1/4/6: ต้องได้รับการยืนยันจาก API ก่อนแจ้งว่าส่งสำเร็จ
+async function submitMission146Online(){
+ const mission=state.formMissionId, fd=state.formData||{};
+ const el=document.getElementById('formErrors');
+ const btn=document.querySelector('button[onclick="submitMission()"]');
+ if(!memberSession||!memberSession.token||!memberSession.member||!memberSession.member.memberId){showToastErr('กรุณาเข้าสู่ระบบใหม่');return;}
+ if(btn){btn.disabled=true;btn.textContent='⏳ กำลังส่งข้อมูล...';}
+ try{
+  const payloadData=JSON.parse(JSON.stringify(fd));
+  if(mission===1){payloadData.recruits=(activeData().mission1Recruits||[]).filter(r=>r&&r.saved);}
+  if(mission===6){payloadData.behaviors=fd.behaviors||[];payloadData.days=fd.days||[];payloadData.checkDates=fd.checkDates||[];}
+  // รูปภาพคงรูปแบบ data URL ตามฟอร์มเดิม; ฝั่ง Apps Script ต้องรองรับข้อมูลรูปแบบนี้
+  const response=await secureApi({action:'submitMission'+mission,token:memberSession.token,memberId:memberSession.member.memberId,data:payloadData});
+  if(response.success!==true)throw new Error(response.message||'ระบบไม่ยืนยันการบันทึก');
+  const d=activeData();d.missions[mission]={status:'รอตรวจรับรอง',formData:JSON.parse(JSON.stringify(fd)),timestamp:new Date().toISOString()};saveActiveData();
+  showToast('ระบบตอบรับภารกิจที่ '+mission+' แล้ว — รอตรวจรับรอง');navigate('missions');
+ }catch(error){if(el)el.innerHTML='<div class="inline-msg error">❌ '+esc(error.message||'ส่งข้อมูลไม่สำเร็จ')+'</div>';showToastErr('ส่งภารกิจไม่สำเร็จ กรุณาตรวจสอบข้อความ');}
+ finally{if(btn){btn.disabled=false;btn.textContent='✅ ส่งภารกิจ';}}
+}
+
+// ภารกิจที่ 2 — ส่งจริงผ่าน API โดยใช้ token ของสมาชิก
 async function submitMission2Online(){
  const fd=state.formData||{};
  const el=document.getElementById('formErrors');
