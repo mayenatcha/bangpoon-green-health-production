@@ -778,7 +778,9 @@ async function submitMission2Online(){
  if((fd.photos||[]).length>1){if(el)el.innerHTML='<div class="inline-msg error">ภารกิจที่ 2 รองรับภาพหลักฐาน 1 รูป กรุณาเลือกเพียง 1 รูป</div>';return;}
  if(btn){btn.disabled=true;btn.textContent='⏳ กำลังส่ง...';}
  try{
-  const payload={action:'submitMission2',token:memberSession.token,data:{member:{memberId:memberSession.member.memberId},m2:{activityDate:fd.date,place:fd.place,wasteType:fd.wasteType,participants:Number(fd.participants),weightKg:fd.wasteKg===''?'':Number(fd.wasteKg),activityStatus:fd.resultStatus,activityNote:fd.note||'',photo:src}}};
+  const payload={action:'submitMission2',token:memberSession.token,
+memberId:memberSession.member.memberId,
+data:{member:{memberId:memberSession.member.memberId},m2:{activityDate:fd.date,place:fd.place,wasteType:fd.wasteType,participants:Number(fd.participants),weightKg:fd.wasteKg===''?'':Number(fd.wasteKg),activityStatus:fd.resultStatus,activityNote:fd.note||'',photo:src}}};
   await secureApi(payload);
   const d=activeData();d.missions[2]={status:'รอตรวจรับรอง',formData:JSON.parse(JSON.stringify(fd)),timestamp:new Date().toISOString()};saveActiveData();
   showToast('ส่งภารกิจที่ 2 เข้าระบบแล้ว ✅');navigate('missions');
